@@ -1,55 +1,42 @@
-#!/usr/bin/env python3
+from flask import Flask, jsonify
+from server.extension import db
+from server.models import Plant
 
-from flask import Flask, jsonify, request, make_response
-from flask_migrate import Migrate
-from flask_restful import Api, Resource
+def create_app():
+    app = Flask(__name__)
+    app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///../instance/app.db"
+    app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-from models import db, Plant
+    db.init_app(app)
 
-app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///plants.db'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.json.compact = False
+    @app.route('/plants/<int:id>')
+    def get_plant(id):
+        plant = Plant.query.get(id)
+        if plant:
+            return jsonify({
+                "id": plant.id,
+                "name": plant.name,
+                "image": plant.image,
+                "price": plant.price,
+                "is_in_stock": plant.is_in_stock
+            })
+        return jsonify({"error": "Plant not found"}), 404
 
-migrate = Migrate(app, db)
-db.init_app(app)
-
-api = Api(app)
-
-
-class Plants(Resource):
-
-    def get(self):
-        plants = [plant.to_dict() for plant in Plant.query.all()]
-        return make_response(jsonify(plants), 200)
-
-    def post(self):
+    @app.route('/plants/<int:id>', methods=["PATCH"])
+    def update_plant(id):
+        from flask import request
+        plant = Plant.query.get(id)
+        if not plant:
+            return jsonify({"error": "Plant not found"}), 404
         data = request.get_json()
-
-        new_plant = Plant(
-            name=data['name'],
-            image=data['image'],
-            price=data['price'],
-        )
-
-        db.session.add(new_plant)
+        plant.is_in_stock = data.get("is_in_stock", plant.is_in_stock)
         db.session.commit()
+        return jsonify({
+            "id": plant.id,
+            "name": plant.name,
+            "image": plant.image,
+            "price": plant.price,
+            "is_in_stock": plant.is_in_stock
+        })
 
-        return make_response(new_plant.to_dict(), 201)
-
-
-api.add_resource(Plants, '/plants')
-
-
-class PlantByID(Resource):
-
-    def get(self, id):
-        plant = Plant.query.filter_by(id=id).first().to_dict()
-        return make_response(jsonify(plant), 200)
-
-
-api.add_resource(PlantByID, '/plants/<int:id>')
-
-
-if __name__ == '__main__':
-    app.run(port=5555, debug=True)
+    return app
